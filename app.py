@@ -121,9 +121,9 @@ def forecast():
             abort(400, description="No suitable model found for the provided parameters")
 
         # Generate the forecast using the loaded model
-        forecast = model.forecast(steps=3)
+        forecast = model.forecast(steps=6)
         forecast_index = pd.date_range(start=pd.Timestamp.now(
-        ) + pd.DateOffset(months=0), periods=3, freq='MS')
+        ) + pd.DateOffset(months=0), periods=6, freq='MS')
         forecast_df = pd.DataFrame(
             {'Date': forecast_index, 'Value': forecast, 'Difference': forecast_diff})
 
