@@ -299,7 +299,7 @@ def forecast():
 
         # Return the forecast and images as JSON, ensuring only forecast prices with data are included
         return jsonify({
-            'forecast': forecast_df.to_dict(orient='records'),
+            'forecast': forecast_df.head(2).to_dict(orient='records'),
             'image_standard': img_base64_original,
             'image_story': img_base64_story,
             'forecast_dates': forecast_dates_filtered,  # Only dates with forecast data
