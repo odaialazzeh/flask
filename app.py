@@ -222,25 +222,20 @@ def forecast():
             pre_price = np.array([])
             pre_dates = np.array([])
 
-        forecast_price = (
-            current_price + np.array(forecast_df['Value'])) * area
+        forecast_price = (current_price + np.array(forecast_df['Value'])) * area
 
         # Resample original and forecast data to quarterly (optional if needed for other parts of the project)
-        original_quarterly = original_df.set_index(
-            'Date').resample('QE').mean()
-        forecast_quarterly = forecast_df.set_index(
-            'Date').resample('QE').mean()
+        original_quarterly = original_df.set_index('Date').resample('QE').mean()
+        forecast_quarterly = forecast_df.set_index('Date').resample('QE').mean()
 
         # Filter the data to include the forecasted dates
-        forecast_dates_filtered = [date.strftime(
-            '%Y-%m-%d %H:%M:%S') for date in forecast_df['Date']]
+        forecast_dates_filtered = [date.strftime('%Y-%m-%d %H:%M:%S') for date in forecast_df['Date']]
 
         # Filter forecast prices
         forecast_price_filtered = [price for price in forecast_price]
 
         # Convert original dates to the correct format
-        filtered_original_dates = [date.strftime(
-            '%Y-%m-%d %H:%M:%S') for date in original_df['Date']]
+        filtered_original_dates = [date.strftime('%Y-%m-%d %H:%M:%S') for date in original_df['Date']]
 
         # Filter pre_price values if needed (can apply specific filtering here)
         filtered_pre_price = pre_price.tolist()
@@ -254,8 +249,7 @@ def forecast():
 
         # Return the forecast and images as JSON, ensuring only forecast prices with data are included
         return jsonify({
-            # Return forecast values
-            'forecast': forecast_df[['Date', 'Difference', 'Value']].to_dict(orient='records'),
+            'forecast': forecast_df[['Date', 'Difference', 'Value']].to_dict(orient='records'),  # Return forecast values
             'image_standard': img_base64_original,  # Image for standard format
             'image_story': img_base64_story,        # Image for story format
             'forecast_dates': forecast_dates_filtered,  # Actual dates as strings
