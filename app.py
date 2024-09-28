@@ -225,70 +225,25 @@ def forecast():
         forecast_price = (
             current_price + np.array(forecast_df['Value'])) * area
 
-        # Resample original and forecast data to quarterly and format dates as Q1, Q2, etc.
+        # Resample original and forecast data to quarterly (optional if needed for other parts of the project)
         original_quarterly = original_df.set_index(
             'Date').resample('QE').mean()
         forecast_quarterly = forecast_df.set_index(
             'Date').resample('QE').mean()
 
-        # Create the range of quarterly dates starting from Q1 2023 to the latest quarter available
-        start_date = pd.Timestamp('2023-01-01')
-        end_date = forecast_quarterly.index[-1] if not forecast_quarterly.empty else pd.Timestamp.now()
-        all_quarters = pd.date_range(start=start_date, end=end_date, freq='QE')
+        # Filter the data to include the forecasted dates
+        forecast_dates_filtered = [date.strftime(
+            '%Y-%m-%d %H:%M:%S') for date in forecast_df['Date']]
 
-        # Format all quarters as Q1, Q2, etc.
-        all_quarters_formatted = all_quarters.strftime('Q%q %Y').tolist()
+        # Filter forecast prices
+        forecast_price_filtered = [price for price in forecast_price]
 
-        # Ensure all quarters are included in original_dates
-        original_quarterly_dates = original_quarterly.index.strftime(
-            'Q%q %Y').tolist()
-        forecast_quarterly_dates = forecast_quarterly.index.strftime(
-            'Q%q %Y').tolist()
+        # Convert original dates to the correct format
+        filtered_original_dates = [date.strftime(
+            '%Y-%m-%d %H:%M:%S') for date in original_df['Date']]
 
-        # Update pre_price and forecast_price to reflect quarterly values
-        pre_price_quarterly = (current_price + np.array(original_quarterly['Value'])) * area \
-            if len(original_quarterly) > 0 else np.array([])
-        forecast_price_quarterly = (current_price + np.array(forecast_quarterly['Value'])) * area \
-            if len(forecast_quarterly) > 0 else np.array([])
-
-        # List of dates to exclude (beyond Q3 2024)
-        excluded_dates = ['2024-12-31 00:00:00', '2025-03-31 00:00:00']
-
-        # Filter out the excluded dates and corresponding values from original_dates, original_values, and pre_price
-        filtered_original_dates = [
-            date.strftime('%Y-%m-%d %H:%M:%S') for i, date in enumerate(original_dates) if date.strftime('%Y-%m-%d %H:%M:%S') not in excluded_dates
-        ]
-
-        filtered_original_values = [
-            value for i, value in enumerate(original_values) if original_dates[i].strftime('%Y-%m-%d %H:%M:%S') not in excluded_dates
-        ]
-
-        filtered_pre_price = [
-            value for i, value in enumerate(pre_price) if original_dates[i].strftime('%Y-%m-%d %H:%M:%S') not in excluded_dates
-        ]
-
-        # Fill available quarters with pre_price and forecast_price data
-        pre_price_quarterly_filled = ['Na'] * len(all_quarters)
-        forecast_price_quarterly_filled = ['Na'] * len(all_quarters)
-
-        for i, quarter in enumerate(all_quarters_formatted):
-            if quarter not in ['Q3 2024', 'Q1 2025']:
-                if quarter in original_quarterly_dates:
-                    pre_price_quarterly_filled[i] = pre_price_quarterly[original_quarterly_dates.index(
-                        quarter)]
-                if quarter in forecast_quarterly_dates:
-                    forecast_price_quarterly_filled[i] = forecast_price_quarterly[forecast_quarterly_dates.index(
-                        quarter)]
-
-        # Filter out 'Na' from forecast prices and dates, and exclude the specific quarters
-        forecast_price_filtered = [
-            price for i, price in enumerate(forecast_price_quarterly_filled)
-            if price != 'Na' and all_quarters_formatted[i] not in ['Q3 2024', 'Q1 2025']
-        ]
-        forecast_dates_filtered = [
-            date for i, date in enumerate(all_quarters_formatted)
-            if forecast_price_quarterly_filled[i] != 'Na' and date not in ['Q3 2024', 'Q1 2025']
-        ]
+        # Filter pre_price values if needed (can apply specific filtering here)
+        filtered_pre_price = pre_price.tolist()
 
         # Save both figures to base64
         fig_original, fig_story = plot_forecast(
@@ -299,15 +254,16 @@ def forecast():
 
         # Return the forecast and images as JSON, ensuring only forecast prices with data are included
         return jsonify({
-            'forecast': forecast_df.head(2).to_dict(orient='records'),
-            'image_standard': img_base64_original,
-            'image_story': img_base64_story,
-            'forecast_dates': forecast_dates_filtered,  # Only dates with forecast data
-            'original_dates': filtered_original_dates,  # Only include dates until Q3 2024
-            'original_values': filtered_original_values,  # Filtered values until Q3 2024
-            'current_price_diff': current_price,
-            'pre_price': filtered_pre_price,  # Filtered pre_price values until Q3 2024
-            'forecast_price': forecast_price_filtered  # Only forecast prices with data
+            # Return forecast values
+            'forecast': forecast_df[['Date', 'Difference', 'Value']].to_dict(orient='records'),
+            'image_standard': img_base64_original,  # Image for standard format
+            'image_story': img_base64_story,        # Image for story format
+            'forecast_dates': forecast_dates_filtered,  # Actual dates as strings
+            'original_dates': filtered_original_dates,  # Original dates as strings
+            'original_values': original_values,  # Original values
+            'current_price_diff': current_price,  # Price difference
+            'pre_price': filtered_pre_price,  # Pre-price values
+            'forecast_price': forecast_price_filtered  # Forecast prices
         })
 
     except Exception as e:
