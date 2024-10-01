@@ -81,7 +81,7 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
         ax.set_title(
             f'Original Data and Forecast for {bedroom} Bedroom(s) {property_type} in {region} (Quarterly)', pad=40)
         ax.set_xlabel('Date')
-        ax.set_ylabel('Price (AED/Sqft)')
+        ax.set_ylabel('Price (AED)')
         ax.legend(loc='lower right',
                   title=f'{bedroom} Bedroom {property_type}')
         ax.grid(axis='y', linestyle='--', alpha=0.7)
@@ -110,8 +110,8 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
 
         # Add watermark using the fixed middle date and average value
         # Adjust font size and alpha for better visibility, ensure zorder places it on top
-        ax.text(adjusted_middle_date, avg_value, email, fontsize=50, color='black',
-                alpha=0.3, ha='center', va='center', rotation=0, zorder=5)
+        ax.text(adjusted_middle_date, avg_value, email, fontsize=45, color='black',
+                alpha=0.2, ha='center', va='center', rotation=0, zorder=5)
 
     # Convert 'Na' in the input data to np.nan
     original_values = [np.nan if v == 'Na' else v for v in original_values]
