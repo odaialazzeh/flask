@@ -1,3 +1,4 @@
+from PIL import Image
 import logging
 import joblib
 from flask_cors import CORS
@@ -8,6 +9,7 @@ import base64
 import io
 import os
 import matplotlib.pyplot as plt
+from PIL import Image  # Import PIL for image handling
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 
@@ -32,14 +34,15 @@ def load_model(bedroom, property_type, region, mainRegion):
         model_path = region_model_path
     else:
         raise FileNotFoundError(
-            f"Neither model folder for {mainRegion} nor {region} exists.")
+            f"Neither model folder for {mainRegion} nor {region} exists."
+        )
 
     # Load the model from the selected path
     saved_data = joblib.load(model_path)
     return saved_data
 
 
-def plot_forecast(original_dates, original_values, forecast_dates, forecast_values, bedroom, property_type, region, email):
+def plot_forecast(original_dates, original_values, forecast_dates, forecast_values, bedroom, property_type, region, email, logo_image=None):
     def generate_plot(fig, ax, bar_width):
         # Plot original data (Quarterly)
         ax.bar(original_quarterly.index, original_quarterly['Value'], color='gray', width=bar_width,
@@ -53,44 +56,24 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
         ax.plot(forecast_quarterly.index, forecast_quarterly['Value'], marker='o', linestyle='--',
                 color='#6b6b6b', label='Forecast (Line)')
 
-        # Get the maximum y-value to set an appropriate height for 'Na' labels
-        max_value = max(original_quarterly['Value'].max(
-        ), forecast_quarterly['Value'].max())
-        # Set 'Na' label 10% above the max bar
-        na_label_height = max_value * 1.1 if max_value > 0 else 10
-
-        # Add text annotations for original data
+        # Ensure the prices are visible on the plot
         for date, value in zip(original_quarterly.index, original_quarterly['Value']):
-            if pd.isna(value):
-                ax.annotate('Na', (date, na_label_height), textcoords="offset points", xytext=(0, 10),
-                            rotation=55, ha='center', color='#005a8c')
-            else:
+            if pd.notna(value):
                 ax.annotate(f'{value:,.0f}', (date, value), textcoords="offset points", xytext=(0, 10),
                             rotation=55, ha='center', color='#005a8c')
 
-        # Add text annotations for forecast data
         for date, value in zip(forecast_quarterly.index, forecast_quarterly['Value']):
-            if pd.isna(value):
-                ax.annotate('Na', (date, na_label_height), textcoords="offset points", xytext=(0, 10),
-                            rotation=55, ha='center', color='#6b6b6b')
-            else:
+            if pd.notna(value):
                 ax.annotate(f'{value:,.0f}', (date, value), textcoords="offset points", xytext=(0, 10),
                             rotation=55, ha='center', color='#6b6b6b')
 
         # Customizing the plot
-        ax.set_title(
-            f'Original Data and Forecast for {bedroom} Bedroom(s) {property_type} in {region} (Quarterly)', pad=40)
+        ax.set_title("")
         ax.set_xlabel('Date')
         ax.set_ylabel('Price (AED)')
         ax.legend(loc='lower right',
                   title=f'{bedroom} Bedroom {property_type}')
         ax.grid(axis='y', linestyle='--', alpha=0.7)
-
-        # Set x-ticks to show quarters (Q1, Q2, etc.)
-        quarters = pd.date_range(
-            start='2023-04-01', end=forecast_quarterly.index[-1], freq='QE')
-        ax.set_xticks(quarters)
-        ax.set_xticklabels([f'Q{(i.quarter)} {i.year}' for i in quarters])
 
         # Remove the top and right spines, keep only the bottom and left spines
         for spine in ax.spines.values():
@@ -98,20 +81,34 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
         ax.spines['bottom'].set_visible(True)
         ax.spines['left'].set_visible(True)
 
+        # Set x-ticks to show quarters (Q1, Q2, etc.), starting from 2023-04-01
+        quarters = pd.date_range(
+            start='2023-04-01', end=forecast_quarterly.index[-1], freq='QE')
+        ax.set_xticks(quarters)
+        ax.set_xticklabels([f'Q{(i.quarter)} {i.year}' for i in quarters])
+
         plt.xticks(rotation=45)  # Rotate x-axis labels for readability
         plt.tight_layout()
 
-        # Place "Na" above the corresponding quarters where data is missing
-        for date in quarters:
-            # If the quarter is missing from both the original and forecast data, place 'Na' label
-            if date not in original_quarterly.index and date not in forecast_quarterly.index:
-                ax.annotate('Na', (date, 0), textcoords="offset points", xytext=(0, 10),
-                            rotation=0, ha='center', color='black')
+        # Determine the minimum value of the original data
+        min_value_original = original_quarterly['Value'].min()
 
-        # Add watermark using the fixed middle date and average value
-        # Adjust font size and alpha for better visibility, ensure zorder places it on top
-        ax.text(adjusted_middle_date, avg_value, email, fontsize=45, color='black',
-                alpha=0.2, ha='center', va='center', rotation=0, zorder=5)
+        # Add the logo as a watermark centered horizontally below the line plot
+        if logo_image:
+            # Resize the logo to the desired width and height
+            logo_resized = logo_image.resize(
+                (2000, 200))  # Example: 200x200 pixels
+
+            # Get the center x-coordinate of the figure
+            fig_center_x = (fig.bbox.xmin + fig.bbox.xmax) / \
+                2 - (logo_resized.width / 2)
+            # Set the y-coordinate dynamically below the lowest point of the line plot
+            logo_position_y = ax.transData.transform(
+                (0, min_value_original - (min_value_original * 0.2)))[1]
+
+            # Set the logo as a watermark at the center bottom
+            fig.figimage(logo_resized, xo=fig_center_x,
+                         yo=logo_position_y, alpha=0.7, zorder=5)
 
     # Convert 'Na' in the input data to np.nan
     original_values = [np.nan if v == 'Na' else v for v in original_values]
@@ -123,23 +120,13 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
     forecast_df = pd.DataFrame({'Date': pd.to_datetime(
         forecast_dates), 'Value': forecast_values}).set_index('Date')
 
+    # Filter data to include only dates starting from 2023-04-01
+    original_df = original_df[original_df.index >= '2023-04-01']
+    forecast_df = forecast_df[forecast_df.index >= '2023-04-01']
+
     # Resample to quarterly, taking the mean of each quarter
     original_quarterly = original_df.resample('QE').mean()
     forecast_quarterly = forecast_df.resample('QE').mean()
-
-    # Filter the data to start from Q1 2023 onwards
-    original_quarterly = original_quarterly.loc['2023-04-01':]
-    forecast_quarterly = forecast_quarterly.loc['2023-01-01':]
-
-    # Consistently set middle date as the middle of the entire original + forecast range
-    all_dates = pd.concat(
-        [pd.Series(original_quarterly.index), pd.Series(forecast_quarterly.index)])
-    middle_date_index = len(all_dates) // 2
-    adjusted_middle_date = all_dates[middle_date_index]
-
-    # Compute a consistent average value based on both original and forecast values
-    avg_value = (original_quarterly['Value'].mean(
-    ) + forecast_quarterly['Value'].mean()) / 2
 
     # Generate two plots: one with original size and one for 1080x1920
 
@@ -180,6 +167,7 @@ def forecast():
         region = data.get('location')
         mainRegion = data.get('region')
         email = data.get('email')
+        logo_base64 = data.get('logo')  # Handle the logo image
 
         # Convert price and area to numeric values
         try:
@@ -188,6 +176,24 @@ def forecast():
             price_sqft = price / area if area else None
         except ValueError:
             abort(400, description="Price and area must be valid numbers")
+
+        # Decode and open the logo image (if provided)
+        logo_image = None
+        if logo_base64:
+            try:
+                # Log the start of the base64 string for debugging
+                logging.info(f"Received base64 logo: {logo_base64[:50]}...")
+
+                # Strip the base64 prefix if it exists
+                if logo_base64.startswith('data:image'):
+                    logo_base64 = logo_base64.split(",")[1]
+
+                # Decode and open the logo image
+                logo_data = base64.b64decode(logo_base64)
+                logo_image = Image.open(io.BytesIO(logo_data))
+            except Exception as e:
+                logging.error(f"Error decoding logo image: {str(e)}")
+                abort(400, description="Invalid base64 logo image data")
 
         # Load the model and differences dynamically
         saved_data = load_model(bedroom, property_type, region, mainRegion)
@@ -203,10 +209,12 @@ def forecast():
 
         # Generate the forecast using the loaded model
         forecast = model.forecast(steps=6)
-        forecast_index = pd.date_range(
-            start=cutoff_date, periods=6, freq='MS')
-        forecast_df = pd.DataFrame(
-            {'Date': forecast_index, 'Value': forecast, 'Difference': forecast_diff})
+        forecast_index = pd.date_range(start=cutoff_date, periods=6, freq='MS')
+        forecast_df = pd.DataFrame({
+            'Date': forecast_index,
+            'Value': forecast,
+            'Difference': forecast_diff
+        })
 
         # Extract the original data for plotting, but limit it to Q3 2024
         original_dates = pd.date_range(start=cutoff_date - pd.DateOffset(months=len(original_values)),
@@ -245,28 +253,29 @@ def forecast():
         filtered_original_dates = [date.strftime(
             '%Y-%m-%d %H:%M:%S') for date in original_df['Date']]
 
-        # Filter pre_price values if needed (can apply specific filtering here)
+        # Filter pre_price values if needed
         filtered_pre_price = pre_price.tolist()
 
-        # Save both figures to base64
+        # Save both figures to base64 with the logo as watermark (if provided)
         fig_original, fig_story = plot_forecast(
-            pre_dates, pre_price, forecast_df['Date'], forecast_price, bedroom, property_type, region, email)
+            pre_dates, pre_price, forecast_df['Date'], forecast_price,
+            bedroom, property_type, region, email, logo_image=logo_image
+        )
 
         img_base64_original = save_plot_to_base64(fig_original)
         img_base64_story = save_plot_to_base64(fig_story)
 
-        # Return the forecast and images as JSON, ensuring only forecast prices with data are included
+        # Return the forecast and images as JSON
         return jsonify({
-            # Return forecast values
             'forecast': forecast_df[['Date', 'Difference', 'Value']].to_dict(orient='records'),
-            'image_standard': img_base64_original,  # Image for standard format
-            'image_story': img_base64_story,        # Image for story format
-            'forecast_dates': forecast_dates_filtered,  # Actual dates as strings
-            'original_dates': filtered_original_dates,  # Original dates as strings
-            'original_values': original_values,  # Original values
-            'current_price_diff': current_price,  # Price difference
-            'pre_price': filtered_pre_price,  # Pre-price values
-            'forecast_price': forecast_price_filtered  # Forecast prices
+            'image_standard': img_base64_original,
+            'image_story': img_base64_story,
+            'forecast_dates': forecast_dates_filtered,
+            'original_dates': filtered_original_dates,
+            'original_values': original_values,
+            'current_price_diff': current_price,
+            'pre_price': filtered_pre_price,
+            'forecast_price': forecast_price_filtered
         })
 
     except Exception as e:
