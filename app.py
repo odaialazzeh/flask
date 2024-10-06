@@ -42,16 +42,16 @@ def load_model(bedroom, property_type, region, mainRegion):
 def plot_forecast(original_dates, original_values, forecast_dates, forecast_values, bedroom, property_type, region, email):
     def generate_plot(fig, ax, bar_width):
         # Plot original data (Quarterly)
-        ax.bar(original_quarterly.index, original_quarterly['Value'], color='skyblue', width=bar_width,
+        ax.bar(original_quarterly.index, original_quarterly['Value'], color='gray', width=bar_width,
                label='Original Data (Bar)', alpha=0.7)
-        ax.plot(original_quarterly.index, original_quarterly['Value'], marker='o', linestyle='-',
-                color='#fc6100', label='Original Data (Line)')
+        ax.plot(original_quarterly.index, original_quarterly['Value'], marker='o', linestyle='--',
+                color='#005a8c', label='Original Data (Line)')
 
         # Plot forecast data (Quarterly)
-        ax.bar(forecast_quarterly.index, forecast_quarterly['Value'], color='lightcoral', width=bar_width,
+        ax.bar(forecast_quarterly.index, forecast_quarterly['Value'], color='skyblue', width=bar_width,
                label='Forecast (Bar)', alpha=0.7)
         ax.plot(forecast_quarterly.index, forecast_quarterly['Value'], marker='o', linestyle='--',
-                color='red', label='Forecast (Line)')
+                color='#6b6b6b', label='Forecast (Line)')
 
         # Get the maximum y-value to set an appropriate height for 'Na' labels
         max_value = max(original_quarterly['Value'].max(
@@ -63,19 +63,19 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
         for date, value in zip(original_quarterly.index, original_quarterly['Value']):
             if pd.isna(value):
                 ax.annotate('Na', (date, na_label_height), textcoords="offset points", xytext=(0, 10),
-                            rotation=55, ha='center', color='#fc6100')
+                            rotation=55, ha='center', color='#005a8c')
             else:
                 ax.annotate(f'{value:,.0f}', (date, value), textcoords="offset points", xytext=(0, 10),
-                            rotation=55, ha='center', color='#fc6100')
+                            rotation=55, ha='center', color='#005a8c')
 
         # Add text annotations for forecast data
         for date, value in zip(forecast_quarterly.index, forecast_quarterly['Value']):
             if pd.isna(value):
                 ax.annotate('Na', (date, na_label_height), textcoords="offset points", xytext=(0, 10),
-                            rotation=55, ha='center', color='red')
+                            rotation=55, ha='center', color='#6b6b6b')
             else:
                 ax.annotate(f'{value:,.0f}', (date, value), textcoords="offset points", xytext=(0, 10),
-                            rotation=55, ha='center', color='red')
+                            rotation=55, ha='center', color='#6b6b6b')
 
         # Customizing the plot
         ax.set_title(
@@ -88,7 +88,7 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
 
         # Set x-ticks to show quarters (Q1, Q2, etc.)
         quarters = pd.date_range(
-            start='2023-01-01', end=forecast_quarterly.index[-1], freq='QE')
+            start='2023-04-01', end=forecast_quarterly.index[-1], freq='QE')
         ax.set_xticks(quarters)
         ax.set_xticklabels([f'Q{(i.quarter)} {i.year}' for i in quarters])
 
@@ -128,7 +128,7 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
     forecast_quarterly = forecast_df.resample('QE').mean()
 
     # Filter the data to start from Q1 2023 onwards
-    original_quarterly = original_quarterly.loc['2023-01-01':]
+    original_quarterly = original_quarterly.loc['2023-04-01':]
     forecast_quarterly = forecast_quarterly.loc['2023-01-01':]
 
     # Consistently set middle date as the middle of the entire original + forecast range
@@ -198,15 +198,18 @@ def forecast():
         if model is None:
             abort(400, description="No suitable model found for the provided parameters")
 
+        # Define the cutoff for Q3 2024
+        cutoff_date = pd.Timestamp('2024-09-30')
+
         # Generate the forecast using the loaded model
         forecast = model.forecast(steps=6)
         forecast_index = pd.date_range(
-            start=pd.Timestamp.now(), periods=6, freq='MS')
+            start=cutoff_date, periods=6, freq='MS')
         forecast_df = pd.DataFrame(
             {'Date': forecast_index, 'Value': forecast, 'Difference': forecast_diff})
 
-        # Extract the original data for plotting
-        original_dates = pd.date_range(start=pd.Timestamp.now() - pd.DateOffset(months=len(original_values)),
+        # Extract the original data for plotting, but limit it to Q3 2024
+        original_dates = pd.date_range(start=cutoff_date - pd.DateOffset(months=len(original_values)),
                                        periods=len(original_values), freq='MS')
         original_df = pd.DataFrame(
             {'Date': original_dates, 'Value': original_values})
@@ -222,20 +225,25 @@ def forecast():
             pre_price = np.array([])
             pre_dates = np.array([])
 
-        forecast_price = (current_price + np.array(forecast_df['Value'])) * area
+        forecast_price = (
+            current_price + np.array(forecast_df['Value'])) * area
 
         # Resample original and forecast data to quarterly (optional if needed for other parts of the project)
-        original_quarterly = original_df.set_index('Date').resample('QE').mean()
-        forecast_quarterly = forecast_df.set_index('Date').resample('QE').mean()
+        original_quarterly = original_df.set_index(
+            'Date').resample('QE').mean()
+        forecast_quarterly = forecast_df.set_index(
+            'Date').resample('QE').mean()
 
         # Filter the data to include the forecasted dates
-        forecast_dates_filtered = [date.strftime('%Y-%m-%d %H:%M:%S') for date in forecast_df['Date']]
+        forecast_dates_filtered = [date.strftime(
+            '%Y-%m-%d %H:%M:%S') for date in forecast_df['Date']]
 
         # Filter forecast prices
         forecast_price_filtered = [price for price in forecast_price]
 
         # Convert original dates to the correct format
-        filtered_original_dates = [date.strftime('%Y-%m-%d %H:%M:%S') for date in original_df['Date']]
+        filtered_original_dates = [date.strftime(
+            '%Y-%m-%d %H:%M:%S') for date in original_df['Date']]
 
         # Filter pre_price values if needed (can apply specific filtering here)
         filtered_pre_price = pre_price.tolist()
@@ -249,7 +257,8 @@ def forecast():
 
         # Return the forecast and images as JSON, ensuring only forecast prices with data are included
         return jsonify({
-            'forecast': forecast_df[['Date', 'Difference', 'Value']].to_dict(orient='records'),  # Return forecast values
+            # Return forecast values
+            'forecast': forecast_df[['Date', 'Difference', 'Value']].to_dict(orient='records'),
             'image_standard': img_base64_original,  # Image for standard format
             'image_story': img_base64_story,        # Image for story format
             'forecast_dates': forecast_dates_filtered,  # Actual dates as strings
