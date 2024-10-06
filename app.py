@@ -43,7 +43,7 @@ def load_model(bedroom, property_type, region, mainRegion):
 
 
 def plot_forecast(original_dates, original_values, forecast_dates, forecast_values, bedroom, property_type):
-    def generate_plot(fig, ax, bar_width, logo_image_path):
+    def generate_plot(fig, ax, bar_width, logo_image_path, logo_position="bottom"):
         # Plot original data (Quarterly)
         ax.bar(original_quarterly.index, original_quarterly['Value'], color='gray', width=bar_width,
                label='Original Data (Bar)', alpha=0.7)
@@ -93,23 +93,25 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
         # Determine the minimum value of the original data
         min_value_original = original_quarterly['Value'].min()
 
-        # Add the logo as a watermark centered horizontally below the line plot
+        # Add the logo as a watermark
         if logo_image_path:
             try:
-                # Open the logo image from the static folder
                 logo_image = Image.open(logo_image_path)
-                # Resize the logo to the desired width and height
-                logo_resized = logo_image.resize(
-                    (2200, 200)) 
+                logo_resized = logo_image.resize((2200, 200))
 
-                # Get the center x-coordinate of the figure
-                fig_center_x = (fig.bbox.xmin + fig.bbox.xmax) / \
-                    2 - (logo_resized.width / 2)
-                # Set the y-coordinate dynamically below the lowest point of the line plot
-                logo_position_y = ax.transData.transform(
-                    (0, min_value_original - (min_value_original * 0.15)))[1]
+                if logo_position == "bottom":
+                    # Center bottom for fig1
+                    fig_center_x = (fig.bbox.xmin + fig.bbox.xmax) / \
+                        2 - (logo_resized.width / 2)
+                    logo_position_y = ax.transData.transform(
+                        (0, min_value_original - (min_value_original * 0.15)))[1]
+                else:
+                    # Center top for fig2
+                    fig_center_x = (fig.bbox.xmin + fig.bbox.xmax) / \
+                        2 - (logo_resized.width / 8)
+                    logo_position_y = fig.bbox.ymax
 
-                # Set the logo as a watermark at the center bottom
+                # Set the logo as a watermark
                 fig.figimage(logo_resized, xo=fig_center_x,
                              yo=logo_position_y, alpha=0.8, zorder=5)
             except Exception as e:
@@ -138,11 +140,13 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
 
     # 1. Original Plot (14x6 inches)
     fig1, ax1 = plt.subplots(figsize=(14, 6), dpi=300)
-    generate_plot(fig1, ax1, bar_width=30, logo_image_path=logo_image_path)
+    generate_plot(fig1, ax1, bar_width=30,
+                  logo_image_path=logo_image_path, logo_position="bottom")
 
-    # 2. Plot with 1080x1920 dimensions (9x16 inches at 120 dpi)
+    # 2. Plot with 1080x1920 dimensions (9x16 inches at 120 dpi), logo at top
     fig2, ax2 = plt.subplots(figsize=(9, 16), dpi=120)
-    generate_plot(fig2, ax2, bar_width=20, logo_image_path=logo_image_path)
+    generate_plot(fig2, ax2, bar_width=20,
+                  logo_image_path=logo_image_path, logo_position="top")
 
     # Return both figures
     return fig1, fig2
