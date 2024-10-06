@@ -42,8 +42,8 @@ def load_model(bedroom, property_type, region, mainRegion):
     return saved_data
 
 
-def plot_forecast(original_dates, original_values, forecast_dates, forecast_values, bedroom, property_type, region, email, logo_image=None):
-    def generate_plot(fig, ax, bar_width):
+def plot_forecast(original_dates, original_values, forecast_dates, forecast_values, bedroom, property_type):
+    def generate_plot(fig, ax, bar_width, logo_image_path):
         # Plot original data (Quarterly)
         ax.bar(original_quarterly.index, original_quarterly['Value'], color='gray', width=bar_width,
                label='Original Data (Bar)', alpha=0.7)
@@ -94,21 +94,26 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
         min_value_original = original_quarterly['Value'].min()
 
         # Add the logo as a watermark centered horizontally below the line plot
-        if logo_image:
-            # Resize the logo to the desired width and height
-            logo_resized = logo_image.resize(
-                (2000, 200))  # Example: 200x200 pixels
+        if logo_image_path:
+            try:
+                # Open the logo image from the static folder
+                logo_image = Image.open(logo_image_path)
+                # Resize the logo to the desired width and height
+                logo_resized = logo_image.resize(
+                    (2200, 200)) 
 
-            # Get the center x-coordinate of the figure
-            fig_center_x = (fig.bbox.xmin + fig.bbox.xmax) / \
-                2 - (logo_resized.width / 2)
-            # Set the y-coordinate dynamically below the lowest point of the line plot
-            logo_position_y = ax.transData.transform(
-                (0, min_value_original - (min_value_original * 0.2)))[1]
+                # Get the center x-coordinate of the figure
+                fig_center_x = (fig.bbox.xmin + fig.bbox.xmax) / \
+                    2 - (logo_resized.width / 2)
+                # Set the y-coordinate dynamically below the lowest point of the line plot
+                logo_position_y = ax.transData.transform(
+                    (0, min_value_original - (min_value_original * 0.15)))[1]
 
-            # Set the logo as a watermark at the center bottom
-            fig.figimage(logo_resized, xo=fig_center_x,
-                         yo=logo_position_y, alpha=0.7, zorder=5)
+                # Set the logo as a watermark at the center bottom
+                fig.figimage(logo_resized, xo=fig_center_x,
+                             yo=logo_position_y, alpha=0.8, zorder=5)
+            except Exception as e:
+                logging.error(f"Error loading logo image: {str(e)}")
 
     # Convert 'Na' in the input data to np.nan
     original_values = [np.nan if v == 'Na' else v for v in original_values]
@@ -128,15 +133,16 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
     original_quarterly = original_df.resample('QE').mean()
     forecast_quarterly = forecast_df.resample('QE').mean()
 
-    # Generate two plots: one with original size and one for 1080x1920
+    # Define logo path using url_for
+    logo_image_path = os.path.join('static', 'images', 'logo.png')
 
     # 1. Original Plot (14x6 inches)
     fig1, ax1 = plt.subplots(figsize=(14, 6), dpi=300)
-    generate_plot(fig1, ax1, bar_width=30)
+    generate_plot(fig1, ax1, bar_width=30, logo_image_path=logo_image_path)
 
     # 2. Plot with 1080x1920 dimensions (9x16 inches at 120 dpi)
     fig2, ax2 = plt.subplots(figsize=(9, 16), dpi=120)
-    generate_plot(fig2, ax2, bar_width=20)
+    generate_plot(fig2, ax2, bar_width=20, logo_image_path=logo_image_path)
 
     # Return both figures
     return fig1, fig2
@@ -166,8 +172,6 @@ def forecast():
         price = data.get('price')
         region = data.get('location')
         mainRegion = data.get('region')
-        email = data.get('email')
-        logo_base64 = data.get('logo')  # Handle the logo image
 
         # Convert price and area to numeric values
         try:
@@ -176,24 +180,6 @@ def forecast():
             price_sqft = price / area if area else None
         except ValueError:
             abort(400, description="Price and area must be valid numbers")
-
-        # Decode and open the logo image (if provided)
-        logo_image = None
-        if logo_base64:
-            try:
-                # Log the start of the base64 string for debugging
-                logging.info(f"Received base64 logo: {logo_base64[:50]}...")
-
-                # Strip the base64 prefix if it exists
-                if logo_base64.startswith('data:image'):
-                    logo_base64 = logo_base64.split(",")[1]
-
-                # Decode and open the logo image
-                logo_data = base64.b64decode(logo_base64)
-                logo_image = Image.open(io.BytesIO(logo_data))
-            except Exception as e:
-                logging.error(f"Error decoding logo image: {str(e)}")
-                abort(400, description="Invalid base64 logo image data")
 
         # Load the model and differences dynamically
         saved_data = load_model(bedroom, property_type, region, mainRegion)
@@ -259,7 +245,7 @@ def forecast():
         # Save both figures to base64 with the logo as watermark (if provided)
         fig_original, fig_story = plot_forecast(
             pre_dates, pre_price, forecast_df['Date'], forecast_price,
-            bedroom, property_type, region, email, logo_image=logo_image
+            bedroom, property_type
         )
 
         img_base64_original = save_plot_to_base64(fig_original)
