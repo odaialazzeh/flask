@@ -309,7 +309,7 @@ def update_image():
 
         # Plot updated forecast (generate both standard and story format images)
         fig_original, fig_story = plot_forecast(preDate, prePrices, forecastDate,
-                                                forecastPrices, bedroom, property_type, region, email)
+                                                forecastPrices, bedroom, property_type)
 
         # Save both standard and story images to base64
         img_base64_original = save_plot_to_base64(fig_original)
