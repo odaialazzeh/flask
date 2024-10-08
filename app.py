@@ -50,10 +50,10 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
         ax.plot(original_quarterly.index, original_quarterly['Value'], marker='o', linestyle='--',
                 color='#005a8c', label='Original Data (Line)')
 
-        # Plot forecast data (Quarterly)
-        ax.bar(forecast_quarterly.index, forecast_quarterly['Value'], color='skyblue', width=bar_width,
+        # Plot forecast data (Monthly)
+        ax.bar(forecast_monthly.index, forecast_monthly['Value'], color='skyblue', width=20,
                label='Forecast (Bar)', alpha=0.7)
-        ax.plot(forecast_quarterly.index, forecast_quarterly['Value'], marker='o', linestyle='--',
+        ax.plot(forecast_monthly.index, forecast_monthly['Value'], marker='o', linestyle='--',
                 color='#6b6b6b', label='Forecast (Line)')
 
         # Ensure the prices are visible on the plot
@@ -62,7 +62,7 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
                 ax.annotate(f'{value:,.0f}', (date, value), textcoords="offset points", xytext=(0, 10),
                             rotation=55, ha='center', color='#005a8c')
 
-        for date, value in zip(forecast_quarterly.index, forecast_quarterly['Value']):
+        for date, value in zip(forecast_monthly.index, forecast_monthly['Value']):
             if pd.notna(value):
                 ax.annotate(f'{value:,.0f}', (date, value), textcoords="offset points", xytext=(0, 10),
                             rotation=55, ha='center', color='#6b6b6b')
@@ -81,11 +81,18 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
         ax.spines['bottom'].set_visible(True)
         ax.spines['left'].set_visible(True)
 
-        # Set x-ticks to show quarters (Q1, Q2, etc.), starting from 2023-04-01
-        quarters = pd.date_range(
-            start='2023-04-01', end=forecast_quarterly.index[-1], freq='QE')
+        # Set x-ticks for original data (quarterly)
+        quarters = original_quarterly.index
         ax.set_xticks(quarters)
         ax.set_xticklabels([f'Q{(i.quarter)} {i.year}' for i in quarters])
+
+        # Add the forecast x-ticks as months
+        months = forecast_monthly.index
+        ax.set_xticks(list(quarters) + list(months))
+        ax.set_xticklabels(
+            [f'Q{(i.quarter)} {i.year}' for i in quarters] +
+            [f'{i.strftime("%b %Y")}' for i in months]
+        )
 
         plt.xticks(rotation=45)  # Rotate x-axis labels for readability
         plt.tight_layout()
@@ -129,18 +136,25 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
 
     # Filter data to include only dates starting from 2023-04-01
     original_df = original_df[original_df.index >= '2023-04-01']
-    forecast_df = forecast_df[forecast_df.index >= '2023-04-01']
 
-    # Resample to quarterly, taking the mean of each quarter
+    # Start forecast from November 2024
+    forecast_df = forecast_df[forecast_df.index >= '2024-11-01']
+
+    # Resample original data to quarterly, forecast data to monthly
     original_quarterly = original_df.resample('QE').mean()
-    forecast_quarterly = forecast_df.resample('QE').mean()
+
+    forecast_cutoff_date = pd.Timestamp('2025-01-01')  # Or any date further in the future
+
+
+    forecast_monthly = forecast_df[forecast_df.index <=
+                                   forecast_cutoff_date].resample('ME').mean()
 
     # Define logo path using url_for
     logo_image_path = os.path.join('static', 'images', 'logo.png')
 
     # 1. Original Plot (14x6 inches)
     fig1, ax1 = plt.subplots(figsize=(14, 6), dpi=300)
-    generate_plot(fig1, ax1, bar_width=30,
+    generate_plot(fig1, ax1, bar_width=27,
                   logo_image_path=logo_image_path, logo_position="bottom")
 
     # 2. Plot with 1080x1920 dimensions (9x16 inches at 120 dpi), logo at top
@@ -288,8 +302,7 @@ def update_image():
         forecastDate = data.get('forecastDate')
         bedroom = data.get('bedroom')
         property_type = data.get('propertyType')
-        region = data.get('location')
-        email = data.get('email')
+  
 
         # Validate input data
         if not isinstance(prePrices, list) or not isinstance(forecastPrices, list):
