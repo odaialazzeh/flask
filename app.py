@@ -1,6 +1,10 @@
+from urllib.parse import urlparse, parse_qs
+import json
+import requests
+import warnings
 from PIL import Image
 import logging
-import joblib
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from flask_cors import CORS
 from flask import Flask, jsonify, request, abort
 import pandas as pd
@@ -13,6 +17,8 @@ from PIL import Image  # Import PIL for image handling
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 
+warnings.filterwarnings("ignore")
+
 app = Flask(__name__)
 CORS(app)  # This enables CORS for all routes
 
@@ -22,24 +28,105 @@ logging.basicConfig(level=logging.INFO)
 # Function to load a model based on parameters
 
 
-def load_model(bedroom, property_type, region, mainRegion):
-    # Construct paths based on mainRegion and region
-    mainRegion_model_path = f'model/{mainRegion}_model/{region}_{bedroom}_{property_type}.pkl' if mainRegion else None
-    region_model_path = f'model/{region}_model/{region}_{bedroom}_{property_type}.pkl'
+# Function to extract parameters from the URL
 
-    # Check if the folder for mainRegion exists, otherwise fallback to region
-    if mainRegion and os.path.exists(os.path.dirname(mainRegion_model_path)):
-        model_path = mainRegion_model_path
-    elif os.path.exists(os.path.dirname(region_model_path)):
-        model_path = region_model_path
+def extract_params_from_url(url):
+    parsed_url = urlparse(url)
+    return {k: v[0] for k, v in parse_qs(parsed_url.query).items()}
+
+# Function to fetch data from the API, save to a JSON file, and retrieve towerPrice values for '2Y'
+
+
+def fetch_save_and_extract_prices(api_url):
+    # Extract parameters from the URL
+    params = extract_params_from_url(api_url)
+
+    # Set up headers (e.g., user-agent)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+
+    # Make the GET request with headers and parameters
+    response = requests.get(api_url.split(
+        '?')[0], params=params, headers=headers)
+
+    # Check if the request was successful
+    if response.status_code == 200:
+        # Parse the JSON data
+        data = response.json()
+
+        # Save the data to a JSON file
+        with open('property_data.json', 'w') as json_file:
+            json.dump(data, json_file, indent=4)
+
+        # Initialize an array to store the towerPrice values for the '2Y' time frame
+        tower_prices_2y = []
+
+        # Access the 'graph' key and the '2Y' array within it for towerPrice and communityPrice
+        if "graph" in data and "2Y" in data["graph"]:
+            for entry in data["graph"]["2Y"]:
+                tower_prices_2y.append(entry.get("towerPrice"))
+
+        # Return the array of towerPrice values
+        return tower_prices_2y
     else:
-        raise FileNotFoundError(
-            f"Neither model folder for {mainRegion} nor {region} exists."
-        )
+        return None
 
-    # Load the model from the selected path
-    saved_data = joblib.load(model_path)
-    return saved_data
+# Forecast function with external values parameter
+
+
+def generate_forecast_model(values):
+    # Data setup
+    data = {
+        'Date': [
+            'Nov 2022', 'Dec 2022', 'Jan 2023', 'Feb 2023', 'Mar 2023', 'Apr 2023',
+            'May 2023', 'Jun 2023', 'Jul 2023', 'Aug 2023', 'Sep 2023', 'Oct 2023',
+            'Nov 2023', 'Dec 2023', 'Jan 2024', 'Feb 2024', 'Mar 2024', 'Apr 2024',
+            'May 2024', 'Jun 2024', 'Jul 2024', 'Aug 2024', 'Sep 2024', 'Oct 2024'
+        ],
+        'Value': values  # Replace with dynamic values
+    }
+    df = pd.DataFrame(data)
+
+    # Convert 'Date' to datetime format and set as index
+    df['Date'] = pd.to_datetime(df['Date'], format='%b %Y')
+    df.set_index('Date', inplace=True)
+
+    # Explicitly set the frequency of the time series to monthly
+    df = df.asfreq('MS')
+
+    # Define model configuration
+    trend = 'add'  # Fixed trend
+    seasonal = None  # Fixed seasonal
+    seasonal_periods = 12
+
+    # Fit the model with the specified configuration
+    model = ExponentialSmoothing(
+        df['Value'], trend=trend, seasonal=seasonal, seasonal_periods=seasonal_periods)
+    fit = model.fit()
+
+    # Forecast the next 6 months
+    forecast = fit.forecast(steps=6)
+
+    # Create a DataFrame for the forecasted values
+    forecast_index = pd.date_range(
+        start=df.index[-1] + pd.DateOffset(months=1), periods=6, freq='MS')
+    forecast_df = pd.DataFrame({'Value': forecast}, index=forecast_index)
+
+    # Calculate differences using iloc
+    last_value = df['Value'].iloc[-1]  # Last value in the original data
+    diff_1 = forecast.iloc[0] - last_value
+    diff_2 = forecast.iloc[1] - forecast.iloc[0] + diff_1
+    diff_3 = forecast.iloc[2] - forecast.iloc[1] + diff_2
+    diff_4 = forecast.iloc[3] - forecast.iloc[2] + diff_3
+    diff_5 = forecast.iloc[4] - forecast.iloc[3] + diff_4
+    diff_6 = forecast.iloc[5] - forecast.iloc[4] + diff_5
+
+    # Combine differences into a list
+    diff_holt = [diff_1, diff_2, diff_3, diff_4, diff_5, diff_6]
+
+    # Return forecast and differences
+    return forecast_df, diff_holt, df['Value'].tolist()
 
 
 def plot_forecast(original_dates, original_values, forecast_dates, forecast_values, bedroom, property_type):
@@ -58,12 +145,18 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
 
         # Ensure the prices are visible on the plot
         for date, value in zip(original_quarterly.index, original_quarterly['Value']):
-            if pd.notna(value):
+            if pd.isna(value):
+                ax.annotate('Na', (date, 0), textcoords="offset points", xytext=(0, 10),
+                            rotation=55, ha='center', color='#005a8c')
+            elif pd.notna(value):
                 ax.annotate(f'{value:,.0f}', (date, value), textcoords="offset points", xytext=(0, 10),
                             rotation=55, ha='center', color='#005a8c')
 
         for date, value in zip(forecast_monthly.index, forecast_monthly['Value']):
-            if pd.notna(value):
+            if pd.isna(value):
+                ax.annotate('Na', (date, 0), textcoords="offset points", xytext=(0, 10),
+                            rotation=55, ha='center', color='#6b6b6b')
+            elif pd.notna(value):
                 ax.annotate(f'{value:,.0f}', (date, value), textcoords="offset points", xytext=(0, 10),
                             rotation=55, ha='center', color='#6b6b6b')
 
@@ -71,8 +164,10 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
         ax.set_title("")
         ax.set_xlabel('Date')
         ax.set_ylabel('Price (AED)')
-        ax.legend(loc='lower right',
-                  title=f'{bedroom} Bedroom {property_type}')
+        ax.legend(
+            loc='lower right',
+            title=f"{'Studio' if bedroom == 0 else f'{bedroom} Bedroom'} {property_type}"
+        )
         ax.grid(axis='y', linestyle='--', alpha=0.7)
 
         # Remove the top and right spines, keep only the bottom and left spines
@@ -125,8 +220,8 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
                 logging.error(f"Error loading logo image: {str(e)}")
 
     # Convert 'Na' in the input data to np.nan
-    original_values = [np.nan if v == 'Na' else v for v in original_values]
-    forecast_values = [np.nan if v == 'Na' else v for v in forecast_values]
+    original_values = [np.nan if v == 0 else v for v in original_values]
+    forecast_values = [np.nan if v == 0 else v for v in forecast_values]
 
     # Convert dates and values into DataFrame
     original_df = pd.DataFrame({'Date': pd.to_datetime(
@@ -135,7 +230,8 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
         forecast_dates), 'Value': forecast_values}).set_index('Date')
 
     # Filter data to include only dates starting from 2023-04-01
-    original_df = original_df[original_df.index >= '2023-04-01']
+    original_df = original_df[(
+        original_df.index >= '2023-04-01') & (original_df.index <= '2024-09-30')]
 
     # Start forecast from November 2024
     forecast_df = forecast_df[forecast_df.index >= '2024-11-01']
@@ -143,8 +239,8 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
     # Resample original data to quarterly, forecast data to monthly
     original_quarterly = original_df.resample('QE').mean()
 
-    forecast_cutoff_date = pd.Timestamp('2025-01-01')  # Or any date further in the future
-
+    # Or any date further in the future
+    forecast_cutoff_date = pd.Timestamp('2025-01-01')
 
     forecast_monthly = forecast_df[forecast_df.index <=
                                    forecast_cutoff_date].resample('ME').mean()
@@ -175,6 +271,11 @@ def save_plot_to_base64(fig):
     return img_base64
 
 
+# Load the region-location mappings once at the start
+with open('region_location_mapping.json', 'r') as file:
+    region_location_mapping = json.load(file)
+
+
 @app.route('/forecast', methods=['POST'])
 def forecast():
     try:
@@ -189,7 +290,9 @@ def forecast():
         area = data.get('area')
         price = data.get('price')
         region = data.get('location')
-        mainRegion = data.get('region')
+
+        if str(bedroom).lower() == 'studio':
+            bedroom = 0
 
         # Convert price and area to numeric values
         try:
@@ -199,26 +302,42 @@ def forecast():
         except ValueError:
             abort(400, description="Price and area must be valid numbers")
 
-        # Load the model and differences dynamically
-        saved_data = load_model(bedroom, property_type, region, mainRegion)
-        model = saved_data['model']
-        forecast_diff = saved_data['forecast_diff']
-        original_values = saved_data['original_values']
+        # Define the mapping of property types to typeId
+        property_type_to_typeId = {
+            "Villa": 35,
+            "Apartment": 1,
+            "Townhouse": 22,
+            "Duplex": 24
+        }
 
-        if model is None:
-            abort(400, description="No suitable model found for the provided parameters")
+        # Get the typeId based on the property type, with a fallback if the type is unknown
+        typeId = property_type_to_typeId.get(property_type)
+        if typeId is None:
+            abort(400, description="Invalid property type")
+
+         # Get the location ID based on region
+        location = region_location_mapping.get(region)
+        if location is None:
+            abort(400, description="Invalid region")
+
+        # Construct the URL with the dynamic id
+        api_url = f"https://www.propertyfinder.ae/api/pwa/tower-insights/price-trends?id={location}&categoryId=1&bedrooms={bedroom}&propertyTypeId={typeId}&locale=en"
+
+        # Fetch and process data
+        tower_prices_2y = fetch_save_and_extract_prices(api_url)
+
+        # Generate the forecast using the generate_forecast_model function
+        forecast_df, forecast_diff, original_values = generate_forecast_model(
+            tower_prices_2y)
 
         # Define the cutoff for Q3 2024
-        cutoff_date = pd.Timestamp('2024-09-30')
+        cutoff_date = pd.Timestamp('2024-10-30')
 
-        # Generate the forecast using the loaded model
-        forecast = model.forecast(steps=6)
-        forecast_index = pd.date_range(start=cutoff_date, periods=6, freq='MS')
-        forecast_df = pd.DataFrame({
-            'Date': forecast_index,
-            'Value': forecast,
-            'Difference': forecast_diff
-        })
+        # Prepare the forecasted data for response
+        forecast_index = pd.date_range(
+            start=pd.Timestamp('2024-11-01'), periods=6, freq='MS')
+        forecast_df['Date'] = forecast_index
+        forecast_df['Difference'] = forecast_diff
 
         # Extract the original data for plotting, but limit it to Q3 2024
         original_dates = pd.date_range(start=cutoff_date - pd.DateOffset(months=len(original_values)),
@@ -229,43 +348,29 @@ def forecast():
         last_value = original_values[-1]
         current_price = price_sqft - last_value if price_sqft is not None else None
 
-        # Calculate pre_price and forecast_price
+        # Calculate pre_price and forecast_price, ensuring 0 values are handled
         if len(original_df) > 1:
-            pre_price = (current_price + np.array(original_df['Value'])) * area
+            pre_price = np.where(original_df['Value'] == 0, 0,
+                                 (current_price + np.array(original_df['Value'])) * area)
             pre_dates = original_dates
         else:
             pre_price = np.array([])
             pre_dates = np.array([])
 
-        forecast_price = (
-            current_price + np.array(forecast_df['Value'])) * area
+        forecast_price = np.where(forecast_df['Value'] == 0, 0,
+                                  (current_price + np.array(forecast_df['Value'])) * area)
 
-        # Resample original and forecast data to quarterly (optional if needed for other parts of the project)
-        original_quarterly = original_df.set_index(
-            'Date').resample('QE').mean()
-        forecast_quarterly = forecast_df.set_index(
-            'Date').resample('QE').mean()
-
-        # Filter the data to include the forecasted dates
+        # Convert forecast dates and prices for JSON response
         forecast_dates_filtered = [date.strftime(
             '%Y-%m-%d %H:%M:%S') for date in forecast_df['Date']]
-
-        # Filter forecast prices
-        forecast_price_filtered = [price for price in forecast_price]
-
-        # Convert original dates to the correct format
+        forecast_price_filtered = forecast_price.tolist()
         filtered_original_dates = [date.strftime(
             '%Y-%m-%d %H:%M:%S') for date in original_df['Date']]
-
-        # Filter pre_price values if needed
         filtered_pre_price = pre_price.tolist()
 
-        # Save both figures to base64 with the logo as watermark (if provided)
+        # Generate plot images in base64
         fig_original, fig_story = plot_forecast(
-            pre_dates, pre_price, forecast_df['Date'], forecast_price,
-            bedroom, property_type
-        )
-
+            pre_dates, pre_price, forecast_df['Date'], forecast_price, bedroom, property_type)
         img_base64_original = save_plot_to_base64(fig_original)
         img_base64_story = save_plot_to_base64(fig_story)
 
@@ -302,7 +407,6 @@ def update_image():
         forecastDate = data.get('forecastDate')
         bedroom = data.get('bedroom')
         property_type = data.get('propertyType')
-  
 
         # Validate input data
         if not isinstance(prePrices, list) or not isinstance(forecastPrices, list):
