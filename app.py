@@ -37,7 +37,7 @@ def extract_params_from_url(url):
 # Function to fetch data from the API, save to a JSON file, and retrieve towerPrice values for '2Y'
 
 
-def fetch_save_and_extract_prices(api_url):
+def fetch_and_extract_prices(api_url):
     # Extract parameters from the URL
     params = extract_params_from_url(api_url)
 
@@ -55,14 +55,10 @@ def fetch_save_and_extract_prices(api_url):
         # Parse the JSON data
         data = response.json()
 
-        # Save the data to a JSON file
-        with open('property_data.json', 'w') as json_file:
-            json.dump(data, json_file, indent=4)
-
         # Initialize an array to store the towerPrice values for the '2Y' time frame
         tower_prices_2y = []
 
-        # Access the 'graph' key and the '2Y' array within it for towerPrice and communityPrice
+        # Access the 'graph' key and the '2Y' array within it for towerPrice
         if "graph" in data and "2Y" in data["graph"]:
             for entry in data["graph"]["2Y"]:
                 tower_prices_2y.append(entry.get("towerPrice"))
@@ -324,7 +320,7 @@ def forecast():
         api_url = f"https://www.propertyfinder.ae/api/pwa/tower-insights/price-trends?id={location}&categoryId=1&bedrooms={bedroom}&propertyTypeId={typeId}&locale=en"
 
         # Fetch and process data
-        tower_prices_2y = fetch_save_and_extract_prices(api_url)
+        tower_prices_2y = fetch_and_extract_prices(api_url)
 
         # Generate the forecast using the generate_forecast_model function
         forecast_df, forecast_diff, original_values = generate_forecast_model(
