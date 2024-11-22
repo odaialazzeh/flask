@@ -98,7 +98,8 @@ def generate_forecast_model(values):
     # Check for any remaining NaN or non-numeric issues
     df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
     if df['Value'].isna().any():
-        raise ValueError("Data contains NaN or non-numeric values after conversion.")
+        raise ValueError(
+            "Data contains NaN or non-numeric values after conversion.")
 
     # Define model configuration
     trend = 'add'
@@ -118,10 +119,17 @@ def generate_forecast_model(values):
         start=df.index[-1] + pd.DateOffset(months=1), periods=6, freq='MS')
     forecast_df = pd.DataFrame({'Value': forecast}, index=forecast_index)
 
-    # Calculate differences
-    last_value = df['Value'].iloc[-1]
-    diff_holt = [forecast.iloc[i] - (forecast.iloc[i-1] if i > 0 else last_value)
-                 for i in range(6)]
+    # Calculate differences using iloc
+    last_value = df['Value'].iloc[-1]  # Last value in the original data
+    diff_1 = forecast.iloc[0] - last_value
+    diff_2 = forecast.iloc[1] - forecast.iloc[0] + diff_1
+    diff_3 = forecast.iloc[2] - forecast.iloc[1] + diff_2
+    diff_4 = forecast.iloc[3] - forecast.iloc[2] + diff_3
+    diff_5 = forecast.iloc[4] - forecast.iloc[3] + diff_4
+    diff_6 = forecast.iloc[5] - forecast.iloc[4] + diff_5
+
+    # Combine differences into a list
+    diff_holt = [diff_1, diff_2, diff_3, diff_4, diff_5, diff_6]
 
     return forecast_df, diff_holt, df['Value'].tolist()
 
