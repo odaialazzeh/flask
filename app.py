@@ -72,9 +72,23 @@ def fetch_and_extract_prices(api_url):
 
 
 def generate_forecast_model(values):
-    # Ensure values are numeric
+    logging.info(f"Original input values: {values}")
+
+    # Convert to numeric and filter NaN values
     values = pd.to_numeric(values, errors='coerce')
-    values = [v for v in values if pd.notna(v)]  # Filter out NaN values
+    logging.info(f"Numeric values after conversion: {values}")
+
+    values = [v for v in values if pd.notna(v)]
+    logging.info(f"Filtered values (non-NaN): {values}")
+
+    # Ensure 'values' is not empty
+    if not values:
+        raise ValueError(
+            "Input values contain no valid data after conversion.")
+
+    # Ensure 'values' is iterable
+    if np.isscalar(values):
+        values = [values]
 
     # Data setup
     data = {
@@ -121,15 +135,10 @@ def generate_forecast_model(values):
 
     # Calculate differences using iloc
     last_value = df['Value'].iloc[-1]  # Last value in the original data
-    diff_1 = forecast.iloc[0] - last_value
-    diff_2 = forecast.iloc[1] - forecast.iloc[0] + diff_1
-    diff_3 = forecast.iloc[2] - forecast.iloc[1] + diff_2
-    diff_4 = forecast.iloc[3] - forecast.iloc[2] + diff_3
-    diff_5 = forecast.iloc[4] - forecast.iloc[3] + diff_4
-    diff_6 = forecast.iloc[5] - forecast.iloc[4] + diff_5
-
-    # Combine differences into a list
-    diff_holt = [diff_1, diff_2, diff_3, diff_4, diff_5, diff_6]
+    diff_holt = [forecast.iloc[0] - last_value]
+    for i in range(1, len(forecast)):
+        diff_holt.append(forecast.iloc[i] -
+                         forecast.iloc[i-1] + diff_holt[i-1])
 
     return forecast_df, diff_holt, df['Value'].tolist()
 
