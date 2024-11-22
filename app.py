@@ -78,17 +78,17 @@ def generate_forecast_model(values):
     values = pd.to_numeric(values, errors='coerce')
     logging.info(f"Numeric values after conversion: {values}")
 
-    values = [v for v in values if pd.notna(v)]
+    if isinstance(values, (pd.Series, np.ndarray)):
+        values = [v for v in values if pd.notna(v)]
+    else:
+        values = [values] if pd.notna(values) else []
+
     logging.info(f"Filtered values (non-NaN): {values}")
 
     # Ensure 'values' is not empty
     if not values:
         raise ValueError(
             "Input values contain no valid data after conversion.")
-
-    # Ensure 'values' is iterable
-    if np.isscalar(values):
-        values = [values]
 
     # Data setup
     data = {
