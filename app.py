@@ -1,3 +1,4 @@
+import time
 from urllib.parse import urlparse, parse_qs
 import json
 import requests
@@ -15,6 +16,7 @@ import os
 import matplotlib.pyplot as plt
 from PIL import Image  # Import PIL for image handling
 import matplotlib
+import time
 matplotlib.use('Agg')  # Use non-interactive backend
 
 warnings.filterwarnings("ignore")
@@ -37,39 +39,54 @@ def extract_params_from_url(url):
 # Function to fetch data from the API, save to a JSON file, and retrieve towerPrice values for '2Y'
 
 
-def fetch_and_extract_prices(api_url):
+def fetch_and_extract_prices(api_url, delay=2):
     # Extract parameters from the URL
     params = extract_params_from_url(api_url)
 
-    # Set up headers (e.g., user-agent)
+    # Set up headers with User-Agent and other required fields
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Connection': 'keep-alive'
     }
 
-    # Make the GET request with headers and parameters
-    response = requests.get(api_url.split(
-        '?')[0], params=params, headers=headers)
+    try:
+        # Introduce a delay before making the API request
+        logging.info(
+            f"Waiting for {delay} seconds before making the API request.")
+        time.sleep(delay)
 
-    # Check if the request was successful
-    if response.status_code == 200:
-        # Parse the JSON data
-        data = response.json()
+        # Make the GET request with headers and parameters
+        response = requests.get(api_url.split(
+            '?')[0], params=params, headers=headers, verify=True)
 
-        # Initialize an array to store the towerPrice values for the '2Y' time frame
-        tower_prices_2y = []
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Parse the JSON data
+            data = response.json()
 
-        # Access the 'graph' key and the '2Y' array within it for towerPrice
-        if "graph" in data and "2Y" in data["graph"]:
-            for entry in data["graph"]["2Y"]:
-                tower_prices_2y.append(entry.get("towerPrice"))
+            # Initialize an array to store the towerPrice values for the '2Y' time frame
+            tower_prices_2y = []
 
-        # Return the array of towerPrice values
-        return tower_prices_2y
-    else:
+            # Access the 'graph' key and the '2Y' array within it for towerPrice
+            if "graph" in data and "2Y" in data["graph"]:
+                for entry in data["graph"]["2Y"]:
+                    tower_prices_2y.append(entry.get("towerPrice"))
+
+            # Return the array of towerPrice values
+            return tower_prices_2y
+        else:
+            # Log the error if the status code is not 200
+            logging.error(
+                f"Failed to fetch data: {response.status_code}, {response.text}")
+            return None
+    except Exception as e:
+        logging.error(f"Error fetching data from API: {str(e)}")
         return None
 
-# Forecast function with external values parameter
 
+# Forecast function with external values parameter
 
 def generate_forecast_model(values):
     logging.info(f"Original input values: {values}")
