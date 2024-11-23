@@ -51,15 +51,21 @@ def fetch_and_extract_prices(api_url, delay=2):
         'Connection': 'keep-alive'
     }
 
+    # Define proxy settings
+    proxies = {
+        'http': 'http://158.255.77.166:80',  # Proxy for HTTP
+        'https': 'http://158.255.77.166:80'  # Proxy for HTTPS
+    }
+
     try:
         # Introduce a delay before making the API request
         logging.info(
             f"Waiting for {delay} seconds before making the API request.")
         time.sleep(delay)
 
-        # Make the GET request with headers and parameters
+        # Make the GET request with headers, parameters, and proxies
         response = requests.get(api_url.split(
-            '?')[0], params=params, headers=headers, verify=True)
+            '?')[0], params=params, headers=headers, proxies=proxies, verify=True)
 
         # Check if the request was successful
         if response.status_code == 200:
