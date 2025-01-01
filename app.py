@@ -129,14 +129,14 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
     original_df = original_df[(
         original_df.index >= '2023-04-01') & (original_df.index <= '2024-09-30')]
 
-    # Start forecast from November 2024
-    forecast_df = forecast_df[forecast_df.index >= '2024-12-01']
+    # Start forecast from Jan 2025
+    forecast_df = forecast_df[forecast_df.index >= '2025-02-01']
 
     # Resample original data to quarterly, forecast data to monthly
     original_quarterly = original_df.resample('QE').mean()
 
     # Or any date further in the future
-    forecast_cutoff_date = pd.Timestamp('2025-02-01')
+    forecast_cutoff_date = pd.Timestamp('2025-03-01')
 
     forecast_monthly = forecast_df[forecast_df.index <=
                                    forecast_cutoff_date].resample('ME').mean()
