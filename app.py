@@ -127,7 +127,7 @@ def plot_forecast(original_dates, original_values, forecast_dates, forecast_valu
 
     # Filter data to include only dates starting from 2023-04-01
     original_df = original_df[(
-        original_df.index >= '2023-04-01') & (original_df.index <= '2024-09-30')]
+        original_df.index >= '2023-07-01') & (original_df.index <= '2024-12-31')]
 
     # Start forecast from Jan 2025
     forecast_df = forecast_df[forecast_df.index >= '2025-01-01']
@@ -205,7 +205,7 @@ def forecast():
         forecast_values = forecast_model.forecast(steps=6)
 
         forecast_index = pd.date_range(start=pd.Timestamp(
-            '2024-11-01'), periods=len(forecast_values), freq='MS')
+            '2025-01-01'), periods=len(forecast_values), freq='MS')
         forecast_df = pd.DataFrame(
             {'Date': forecast_index, 'Value': forecast_values})
 
